@@ -85,8 +85,8 @@ use strict;
 use warnings;
 use Exporter;
 use Carp;
-use Getopt::Long;
-#use Data::Dump qw (pp);
+use Getopt::Long 2.37;
+#use Data::Dumper;
 
 BEGIN {
     use vars      qw(@ISA @EXPORT @EXPORT_OK);
@@ -98,7 +98,7 @@ BEGIN {
     $REF_NAME   = "Getopt::LongUsage";  # package name
 
     use vars      qw( $VERSION );
-    $VERSION    = '0.10';
+    $VERSION    = '0.11';
 }
 
 =pod
@@ -136,7 +136,7 @@ sub new {
 
 Parse option configuration for C<Getopt::Long>.
 
-This method reproduces enough code as found in
+This method reproduces just enough code as found in
 C<Getopt::Long::GetOptionsFromArray()>, while also calling functions in that
 module, so to parse the same exact C<Getopt::Long> configuration input.
 
@@ -253,14 +253,16 @@ This is a string representing the format for executing your application.
 
 =item * B<descriptions>
 
-This is an array reference of options with descriptions. The format is as follows:
+This is an array reference of options with descriptions. The order of the
+options provided to the C<descriptions> parameter dictates the presentation
+order. The format is as follows:
 
     my $descriptions = [ 'opt1' => 'desc1', 'opt2' => 'desc2', etc... ]
 
 The options should be one that is found in the Getopt::Long configuration passed
 to the C<Getopt_Long> parameter. If the configuration consists of both long and
-short options, you need only provide one of them. The description is associated
-with all related options as configured for Getopt::Long.
+short options, you should only provide one of them. The description is
+associated with all related options as configured for Getopt::Long.
 
 So for example, if the following is your Getopt::Long configuration:
 
@@ -277,9 +279,6 @@ Then the following two C<descriptions> configurations would be valid:
 It does not matter if you use either the long or short form of the options, as
 it is only used in this parameter for the purpose of associating the given
 description with a relation of options in the Getopt::Long configuration.
-
-Note that the order of the options provided to the C<descriptions> parameter
-dictates the presentation order.
 
 =item * B<format>
 
@@ -357,7 +356,7 @@ sub GetLongUsage (@) {
             $descriptions{$k} = $v;
         }
     }
-    #DEBUG# pp {"descriptions", \%descriptions};
+    #DEBUG# print Dumper {"descriptions", \%descriptions};
 
     # Some private methods
     # &$elementexists()
@@ -388,7 +387,7 @@ sub GetLongUsage (@) {
     # These are defined constants inside Getopt::Long, as of version 2.38
     # If these constants change inside Getopt::Long, this module will break.
     my %m = (   CTL_TYPE    => $Getopt::Long::CTL_TYPE       || 0,
-                CTL_NAME    => $Getopt::Long::CTL_NAME       || 1,
+                CTL_CNAME   => $Getopt::Long::CTL_CNAME      || 1,
                 CTL_DEFAULT => $Getopt::Long::CTL_DEFAULT    || 2,
                 CTL_DEST    => $Getopt::Long::CTL_DEST       || 3,
                 CTL_DEST_SCALAR => $Getopt::Long::CTL_DEST_SCALAR    || 0,
@@ -401,30 +400,32 @@ sub GetLongUsage (@) {
 
     # Retrieve the Getopt::Long config map resulting from parsing the options
     my $optionmap = ParseGetoptLongConfig(@{$args{'Getopt_Long'}});
-    #DEBUG# pp {"optionmap", $optionmap};
+    #DEBUG# print Dumper {"optionmap", $optionmap};
 
     # Create the map for the user preferred order of displaying the options.
     my $ordermap = {};  # This is the map
     my $orderindex = 0; # we'll use this one later, keeping the last value, when populating '@output'
     my $tmp_ordernumber = 0;
-    while ($tmp_ordernumber < @{$args{'descriptions'}}) {
+    if ((exists $args{'descriptions'}) && (ref($args{'descriptions'}) eq "ARRAY")) {
+    while ($tmp_ordernumber < scalar @{$args{'descriptions'}}) {
         if ($elementexists->($args{'descriptions'}->[$tmp_ordernumber],$args{'hidden_opts'})) {
             $tmp_ordernumber += 2;
             next;
         }
         unless ((! defined $args{'descriptions'}->[$tmp_ordernumber]) || ($args{'descriptions'}->[$tmp_ordernumber] eq "")) {
-            $ordermap->{ $optionmap->{ lc $args{'descriptions'}->[$tmp_ordernumber] }[$m{CTL_NAME}] } = $orderindex;
+            $ordermap->{ $optionmap->{ lc $args{'descriptions'}->[$tmp_ordernumber] }[$m{CTL_CNAME}] } = $orderindex;
         }
         $tmp_ordernumber += 2;
         $orderindex++;
     }
-    #DEBUG# pp {"ordermap", $ordermap};
+    #DEBUG# print Dumper {"ordermap", $ordermap};
+    }
 
     # Create the usage message map for the options;
     my $usagemap = {};  # This is the map
     foreach my $opt (keys %$optionmap) {
         next if !defined $opt || $opt eq "";
-        my $ctlname = $optionmap->{$opt}[$m{CTL_NAME}];
+        my $ctlname = $optionmap->{$opt}[$m{CTL_CNAME}];
         unless (exists $usagemap->{ $ctlname }) {
             $usagemap->{ $ctlname } = [[],[]]; # [[alias1,alias2],[descline1,descline2]]
         }
@@ -436,7 +437,7 @@ sub GetLongUsage (@) {
             $usagemap->{ $ctlname }[1] = \@lines;
         }
     }
-    #DEBUG# pp {"usagemap",$usagemap};
+    #DEBUG# print Dumper {"usagemap",$usagemap};
 
     # Format the text usage message for the options
     # Getopt::Long defines 'longprefix = "(--)"' in ConfigDefaults() as the
@@ -492,7 +493,7 @@ sub GetLongUsage (@) {
         }
         $output[$tmp_ordernumber] = [ [$opttext], $usagemap->{$optname}[1] ];
     }
-    #DEBUG# pp ("output",@output);
+    #DEBUG# print Dumper ("output",@output);
 
     # Assemble the usage text message
     my @usage;
@@ -545,7 +546,7 @@ Example code:
 
     use Getopt::Long;
     use Getopt::LongUsage;
-
+    
     my %options;
     my @getoptconf = (  \%options,
                         'isAvailable',
@@ -581,7 +582,7 @@ Example code:
 
     use Getopt::Long;
     use Getopt::LongUsage;
-
+    
     my $VERSION = "2.1.5";
     my %options;
     my @getoptconf = (  \%options,
@@ -817,7 +818,7 @@ Getopt::LongUsage on Codepin: http://www.codepin.org/project/perlmod/Getopt-Long
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (c) 2010 Center for the Application of Information Technologies.
+Copyright (c) 2010-2013 Center for the Application of Information Technologies.
 All rights reserved.
 
 This program is free software; you can redistribute it and/or modify it under
